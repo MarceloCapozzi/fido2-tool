@@ -8,7 +8,7 @@ Release notes on GitHub come from the section that matches the tag. To
 release, rename `[Unreleased]` to `[x.y.z] - YYYY-MM-DD` (see "Releasing" in
 the README).
 
-## [Unreleased]
+## [0.1.0] - 2026-09-27
 
 First release.
 
