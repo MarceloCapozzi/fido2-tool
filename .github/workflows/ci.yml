@@ -1,0 +1,74 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # git describe needs the tags
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Check formatting
+        shell: pwsh
+        run: |
+          $files = gofmt -l .
+          if ($files) { Write-Error "Files need gofmt:`n$files" }
+
+      # Fail early: a tag can't be released without its CHANGELOG entry.
+      - name: Check release notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: ./scripts/release-notes.ps1 -Version "${{ github.ref_name }}" | Out-Null
+
+      - name: Build, vet and test
+        shell: pwsh
+        run: ./scripts/build.ps1
+
+      - name: Write release notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $sum = Get-ChildItem dist/*.zip.sha256 | Select-Object -First 1
+          ./scripts/release-notes.ps1 -Version "${{ github.ref_name }}" -ChecksumFile $sum.FullName -OutFile dist/release-notes.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fido2-tool-windows-amd64
+          path: |
+            dist/*.zip
+            dist/*.zip.sha256
+            dist/release-notes.md
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: fido2-tool-windows-amd64
+          path: release
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: release/release-notes.md
+          files: |
+            release/*.zip
+            release/*.zip.sha256
+          # Tags with a hyphen (v0.2.0-rc.1) are published as pre-releases.
+          prerelease: ${{ contains(github.ref_name, '-') }}
